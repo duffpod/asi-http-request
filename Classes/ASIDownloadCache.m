@@ -14,7 +14,6 @@ static ASIDownloadCache *sharedCache = nil;
 
 static NSString *sessionCacheFolder = @"SessionStore";
 static NSString *permanentCacheFolder = @"PermanentStore";
-static NSArray *fileExtensionsToHandleAsHTML = nil;
 
 @interface ASIDownloadCache ()
 + (NSString *)keyForURL:(NSURL *)url;
@@ -22,15 +21,6 @@ static NSArray *fileExtensionsToHandleAsHTML = nil;
 @end
 
 @implementation ASIDownloadCache
-
-+ (void)initialize
-{
-	if (self == [ASIDownloadCache class]) {
-		// Obviously this is not an exhaustive list, but hopefully these are the most commonly used and this will 'just work' for the widest range of people
-		// I imagine many web developers probably use url rewriting anyway
-		fileExtensionsToHandleAsHTML = [[NSArray alloc] initWithObjects:@"asp",@"aspx",@"jsp",@"php",@"rb",@"py",@"pl",@"cgi", nil];
-	}
-}
 
 - (id)init
 {
@@ -44,12 +34,9 @@ static NSArray *fileExtensionsToHandleAsHTML = nil;
 + (id)sharedCache
 {
 	if (!sharedCache) {
-		@synchronized(self) {
-			if (!sharedCache) {
-				sharedCache = [[self alloc] init];
-				[sharedCache setStoragePath:[[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"ASIHTTPRequestCache"]];
-			}
-		}
+		sharedCache = [[self alloc] init];
+		[sharedCache setStoragePath:[[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:@"ASIHTTPRequestCache"]];
+
 	}
 	return sharedCache;
 }
@@ -115,7 +102,31 @@ static NSArray *fileExtensionsToHandleAsHTML = nil;
 
 - (NSDate *)expiryDateForRequest:(ASIHTTPRequest *)request maxAge:(NSTimeInterval)maxAge
 {
-  return [ASIHTTPRequest expiryDateForRequest:request maxAge:maxAge];
+	NSMutableDictionary *responseHeaders = [NSMutableDictionary dictionaryWithDictionary:[request responseHeaders]];
+
+	// If we weren't given a custom max-age, lets look for one in the response headers
+	if (!maxAge) {
+		NSString *cacheControl = [[responseHeaders objectForKey:@"Cache-Control"] lowercaseString];
+		if (cacheControl) {
+			NSScanner *scanner = [NSScanner scannerWithString:cacheControl];
+			[scanner scanUpToString:@"max-age" intoString:NULL];
+			if ([scanner scanString:@"max-age" intoString:NULL]) {
+				[scanner scanString:@"=" intoString:NULL];
+				[scanner scanDouble:&maxAge];
+			}
+		}
+	}
+
+	// RFC 2612 says max-age must override any Expires header
+	if (maxAge) {
+		return [[NSDate date] addTimeInterval:maxAge];
+	} else {
+		NSString *expires = [responseHeaders objectForKey:@"Expires"];
+		if (expires) {
+			return [ASIHTTPRequest dateFromRFC1123String:expires];
+		}
+	}
+	return nil;
 }
 
 - (void)storeResponseForRequest:(ASIHTTPRequest *)request maxAge:(NSTimeInterval)maxAge
@@ -169,14 +180,9 @@ static NSArray *fileExtensionsToHandleAsHTML = nil;
 
 	if ([request responseData]) {
 		[[request responseData] writeToFile:dataPath atomically:NO];
-	} else if ([request downloadDestinationPath] && ![[request downloadDestinationPath] isEqualToString:dataPath]) {        
+	} else if ([request downloadDestinationPath] && ![[request downloadDestinationPath] isEqualToString:dataPath]) {
 		NSError *error = nil;
-        NSFileManager* manager = [[NSFileManager alloc] init];
-        if ([manager fileExistsAtPath:dataPath]) {
-            [manager removeItemAtPath:dataPath error:&error];
-        }
-        [manager copyItemAtPath:[request downloadDestinationPath] toPath:dataPath error:&error];
-        [manager release];
+		[[[[NSFileManager alloc] init] autorelease] copyItemAtPath:[request downloadDestinationPath] toPath:dataPath error:&error];
 	}
 	[[self accessLock] unlock];
 }
@@ -203,20 +209,11 @@ static NSArray *fileExtensionsToHandleAsHTML = nil;
 {
 	// Grab the file extension, if there is one. We do this so we can save the cached response with the same file extension - this is important if you want to display locally cached data in a web view 
 	NSString *extension = [[url path] pathExtension];
-
-	// If the url doesn't have an extension, we'll add one so a webview can read it when locally cached
-	// If the url has the extension of a common web scripting language, we'll change the extension on the cached path to html for the same reason
-	if (![extension length] || [[[self class] fileExtensionsToHandleAsHTML] containsObject:[extension lowercaseString]]) {
+	if (![extension length]) {
 		extension = @"html";
 	}
 	return [self pathToFile:[[[self class] keyForURL:url] stringByAppendingPathExtension:extension]];
 }
-
-+ (NSArray *)fileExtensionsToHandleAsHTML
-{
-	return fileExtensionsToHandleAsHTML;
-}
-
 
 - (NSString *)pathToCachedResponseHeadersForURL:(NSURL *)url
 {
@@ -262,10 +259,7 @@ static NSArray *fileExtensionsToHandleAsHTML = nil;
 
 	// Grab the file extension, if there is one. We do this so we can save the cached response with the same file extension - this is important if you want to display locally cached data in a web view 
 	NSString *extension = [[[request url] path] pathExtension];
-
-	// If the url doesn't have an extension, we'll add one so a webview can read it when locally cached
-	// If the url has the extension of a common web scripting language, we'll change the extension on the cached path to html for the same reason
-	if (![extension length] || [[[self class] fileExtensionsToHandleAsHTML] containsObject:[extension lowercaseString]]) {
+	if (![extension length]) {
 		extension = @"html";
 	}
 	path =  [path stringByAppendingPathComponent:[[[self class] keyForURL:[request url]] stringByAppendingPathExtension:extension]];
@@ -441,19 +435,15 @@ static NSArray *fileExtensionsToHandleAsHTML = nil;
 	return YES;
 }
 
+
+// Borrowed from: http://stackoverflow.com/questions/652300/using-md5-hash-on-a-string-in-cocoa
 + (NSString *)keyForURL:(NSURL *)url
 {
 	NSString *urlString = [url absoluteString];
-	if ([urlString length] == 0) {
-		return nil;
-	}
-
 	// Strip trailing slashes so http://allseeing-i.com/ASIHTTPRequest/ is cached the same as http://allseeing-i.com/ASIHTTPRequest
 	if ([[urlString substringFromIndex:[urlString length]-1] isEqualToString:@"/"]) {
 		urlString = [urlString substringToIndex:[urlString length]-1];
 	}
-
-	// Borrowed from: http://stackoverflow.com/questions/652300/using-md5-hash-on-a-string-in-cocoa
 	const char *cStr = [urlString UTF8String];
 	unsigned char result[16];
 	CC_MD5(cStr, (CC_LONG)strlen(cStr), result);

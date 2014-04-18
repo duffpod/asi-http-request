@@ -22,9 +22,6 @@
 
 -(void) dealloc {
 	[name release];
-	[cdnURL release];
-	[referrerACL release];
-	[useragentACL release];
 	[super dealloc];
 }
 

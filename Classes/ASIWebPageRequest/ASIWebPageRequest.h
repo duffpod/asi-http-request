@@ -11,6 +11,10 @@
 //  Known issue: You cannot use startSychronous with an ASIWebPageRequest
 
 #import "ASIHTTPRequest.h"
+#import <libxml/HTMLparser.h>
+#import <libxml/xmlsave.h>
+#import <libxml/xpath.h>
+#import <libxml/xpathInternals.h>
 
 @class ASINetworkQueue;
 
@@ -48,7 +52,7 @@ typedef enum _ASIURLReplacementMode {
 	NSMutableDictionary *resourceList;
 
 	// Used internally for parsing HTML (with libxml)
-	struct _xmlDoc *doc;
+	xmlDocPtr doc;
 
 	// If the response is an HTML or CSS file, this will be set so the content can be correctly parsed when it has finished fetching external resources
 	ASIWebContentType webContentType;
@@ -60,9 +64,6 @@ typedef enum _ASIURLReplacementMode {
 
 	// Controls what ASIWebPageRequest does with external resources. See the notes above for more.
 	ASIURLReplacementMode urlReplacementMode;
-
-	// When set to NO, loading will stop when an external resource fails to load. Defaults to YES
-	BOOL shouldIgnoreExternalResourceErrors;
 }
 
 // Will return a data URI that contains a base64 version of the content at this url
@@ -76,5 +77,4 @@ typedef enum _ASIURLReplacementMode {
 
 @property (retain, nonatomic) ASIWebPageRequest *parentRequest;
 @property (assign, nonatomic) ASIURLReplacementMode urlReplacementMode;
-@property (assign, nonatomic) BOOL shouldIgnoreExternalResourceErrors;
 @end

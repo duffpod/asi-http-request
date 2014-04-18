@@ -197,7 +197,6 @@ static NSString *sharedSecretAccessKey = nil;
 	ASIS3Request *newRequest = [super copyWithZone:zone];
 	[newRequest setAccessKey:[self accessKey]];
 	[newRequest setSecretAccessKey:[self secretAccessKey]];
-	[newRequest setRequestScheme:[self requestScheme]];
 	[newRequest setAccessPolicy:[self accessPolicy]];
 	return newRequest;
 }

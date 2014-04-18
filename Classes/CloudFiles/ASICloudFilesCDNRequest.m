@@ -38,35 +38,15 @@
 }
 
 - (BOOL)cdnEnabled {
-    NSNumber *enabled = [[self responseHeaders] objectForKey:@"X-CDN-Enabled"];
-    if (!enabled) {
-        enabled = [[self responseHeaders] objectForKey:@"X-Cdn-Enabled"];
-    }
-	return [enabled boolValue];
+	return [[[self responseHeaders] objectForKey:@"X-Cdn-Enabled"] boolValue];
 }
 
 - (NSString *)cdnURI {
-	NSString *uri = [[self responseHeaders] objectForKey:@"X-CDN-URI"];
-    if (!uri) {
-        uri = [[self responseHeaders] objectForKey:@"X-Cdn-Uri"];
-    }
-    return uri;
-}
-
-- (NSString *)cdnSSLURI {
-    NSString *uri = [[self responseHeaders] objectForKey:@"X-CDN-SSL-URI"];
-    if (!uri) {
-        uri = [[self responseHeaders] objectForKey:@"X-Cdn-Ssl-Uri"];
-    }
-	return uri;
+	return [[self responseHeaders] objectForKey:@"X-Cdn-Uri"];
 }
 
 - (NSUInteger)cdnTTL {
-    NSNumber *ttl = [[self responseHeaders] objectForKey:@"X-TTL"];
-    if (!ttl) {
-        ttl = [[self responseHeaders] objectForKey:@"X-Ttl"];
-    }
-    return [ttl intValue];
+	return [[[self responseHeaders] objectForKey:@"X-Ttl"] intValue];
 }
 
 #pragma mark -
@@ -150,7 +130,7 @@
 	if (ttl > 0) {
 		[request addRequestHeader:@"X-Ttl" value:[NSString stringWithFormat:@"%i", ttl]];
 	}
-	[request addRequestHeader:@"X-CDN-Enabled" value:cdnEnabled ? @"True" : @"False"];
+	[request addRequestHeader:@"X-Cdn-Enabled" value:cdnEnabled ? @"True" : @"False"];
 	return request;
 }
 
